@@ -1,0 +1,74 @@
+import pyspark                                                                                                                                       
+                                                                                                                                                     
+from pyspark.sql import SparkSession                                                                                                                 
+                                                                                                                                                     
+from pyspark.sql.types import *            ## it is use to import all type of variables type just like integer,float,numerical etc ##                                                                                                                      
+from pyspark.sql.functions import *        ## it is use to import all built in function of spark like Rows columns etc                                                                                                          
+                                                                                                                   
+                                                                                         
+if __name__ =='__main__':
+
+
+
+  #################### creating A spark session ##############
+  
+   spark = SparkSession.builder.appName("myApp").getOrCreate()                                                                                           
+   
+   
+   
+   ########################## getting data from socket like in my case i get the data from the kafka  ###################
+   
+   df = spark.readStream.format("kafka").option("kafka.bootstrap.servers","172.18.0.2:6667" ).option("subscribe", "test").option("startingOffsets", "
+earliest").load()                                                                                                                                    
+                    ######################## convert the whole data into string as value its name in 1 column  ################## 
+                    
+                    
+   personStringDF = df.selectExpr("CAST(value AS STRING)") 
+   
+                    ######################## in my case i only get the first 3 data as seperator of (,) ###################
+                    
+                    
+   personDF = personStringDF.select(split(col("value"),",").getItem(0).alias("ID"),split(col("value"),",").getItem(1).alias("FullName"),split(col("va
+lue"),",").getItem(2).alias("Address")) 
+                
+                #################################### transformation on the data ########################
+                
+                                 ####### count the null and nan value from the extracted data###########
+                                 
+   count = personDF.select([count(when(isnan(c) | col(c).isNull(), c)).alias(c) for c in personDF.columns])
+                 
+                                 ####### remove the null value from the data ############
+                                 
+   data_agg = personDF.where(personDF.UserName.isNotNull())
+   
+                               #################### Stateless Transformation ##################
+                               
+                               "" stateless transformation only work with the 
+                               spark streaming not in structured streaming their is big difference between structure streamig and
+                               spark streamig 
+                               
+                               link_1 = (https://spark.apache.org/docs/2.1.1/structured-streaming-programming-guide.html) 
+                               in  link_1 you get know about the structure streaming and statless transformation 
+                               ""
+                               
+                               
+#   personDF.createGlobalTempView("record")                                                                                                        
+ #  spark.sql("select ID, fullname, Address from global_Temp.record where length(UserName) =11 && UserName not like('%[^0-9]%')").show()
+
+#                              #################### stateless Transformation end ################
+
+
+           
+                              ###############   save the data to the hdfs system ################
+                              
+                              
+                              
+   personDF.writeStream.outputMode("append").format("csv").option("header","true").option("checkpointLocation","/mutahar/Extracted_data").option("
+path","/mutahar/Extracted_data").start().awaitTermination()        
+ 
+           
+           
+           
+           ############################### write the data to console #################################################
+  personDF.writeStream.format("console").outputMode("append").start().awaitTermination()                                 
+   
